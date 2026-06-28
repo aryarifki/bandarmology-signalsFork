@@ -1,0 +1,64 @@
+name: 🔍 TP/SL Auditor
+
+# Cek setiap 30 menit saat jam bursa IDX (WIB):
+# Sesi 1: 09:00-11:30 = 02:00-04:30 UTC
+# Istirahat: 11:30-13:30
+# Sesi 2: 13:30-16:30 = 06:30-09:30 UTC
+on:
+  schedule:
+    # Sesi 1 (02:00-04:30 UTC = 09:00-11:30 WIB)
+    - cron: '0 2 * * 1-5'
+    - cron: '30 2 * * 1-5'
+    - cron: '0 3 * * 1-5'
+    - cron: '30 3 * * 1-5'
+    - cron: '0 4 * * 1-5'
+    - cron: '30 4 * * 1-5'
+    # Sesi 2 (06:30-09:30 UTC = 13:30-16:30 WIB)
+    - cron: '30 6 * * 1-5'
+    - cron: '0 7 * * 1-5'
+    - cron: '30 7 * * 1-5'
+    - cron: '0 8 * * 1-5'
+    - cron: '30 8 * * 1-5'
+    - cron: '0 9 * * 1-5'
+    - cron: '30 9 * * 1-5'
+  workflow_dispatch:   # Bisa trigger manual kapan saja
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run TP/SL Auditor
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python3 run_audit.py
+
+      - name: Commit updated signals.csv (if WIN/LOSS/EXPIRED)
+        run: |
+          git config user.name  "Bandarmology Bot 🤖"
+          git config user.email "bot@bandarmology.pro"
+          git add data/signals.csv
+          if git diff --staged --quiet; then
+            echo "ℹ️  No status changes"
+          else
+            git commit -m "🔍 Audit: WIN/LOSS update $(date -u '+%Y-%m-%d %H:%M UTC')"
+            git push
+            echo "✅ Track record updated"
+          fi
