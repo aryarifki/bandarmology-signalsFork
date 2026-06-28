@@ -1,0 +1,1 @@
+id,ticker,signal_type,session,entry_low,entry_high,tp_price,sl_price,tp_pct,sl_pct,score,wyckoff_phase,cmf_value,obv_direction,broker_crossing,vcp_grade,rs_interp,rationale,timestamp_wib,status,exit_price,exit_timestamp,pnl_pct,days_held,notes
