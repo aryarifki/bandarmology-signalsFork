@@ -193,12 +193,17 @@ def check_hard_gates(df, wp: str, cmf_v: float, mfi_v: float,
         if vr < 1.0:
             return False, f"Phase B + volume {vr:.1f}x (perlu volume konfirmasi >= 1.0x)"
 
-    # ── Gate 4: RSI gate — hindari overbought dan extreme oversold
+    # ── Gate 4: RSI gate — per phase
+    # Phase C (Spring) EXEMPT dari RSI overbought check.
+    # Spring recovery secara natural push RSI naik dari extreme oversold.
+    # RSI tinggi pada Phase C = konfirmasi kekuatan recovery, bukan bahaya.
     rsi_v = float(rsi(p).iloc[-1])
-    if rsi_v > 65:
-        return False, f"RSI {rsi_v:.0f} > 65 (overbought — risiko koreksi)"
-    if rsi_v < 20 and wp != "C":
-        return False, f"RSI {rsi_v:.0f} < 20 (extreme panic — kecuali Phase C Spring)"
+    if wp == "B" and rsi_v > 65:
+        return False, f"Phase B + RSI {rsi_v:.0f} > 65 (overbought saat konsolidasi)"
+    if wp == "D" and rsi_v > 72:
+        return False, f"Phase D + RSI {rsi_v:.0f} > 72 (terlalu extend)"
+    if wp not in ("C",) and rsi_v < 20:
+        return False, f"RSI {rsi_v:.0f} < 20 (extreme panic)"
 
     # ── Gate 5: Minimum volume untuk konviksi
     if vr < 0.70 and wp != "C":
@@ -564,13 +569,110 @@ def get_recent_signal_tickers(days: int = 5) -> set:
 #  MAIN SCAN
 # ══════════════════════════════════════════════════════
 
+def _scan_tickers(tickers: list, session: str, ihsg_df,
+                   regime: dict, threshold: int,
+                   cooldown_tickers: set,
+                   post_open_mode: bool) -> tuple:
+    """Scan list ticker dan return (candidates, blocked_log)."""
+    try:
+        from config import PROVEN_TICKERS, MIN_SCORE_PROVEN
+    except ImportError:
+        PROVEN_TICKERS  = set()
+        MIN_SCORE_PROVEN = threshold
+
+    candidates  = []
+    blocked_log = []
+
+    for tk in tickers:
+        if tk in TICKER_BLACKLIST:
+            continue
+        if tk in cooldown_tickers:
+            continue
+
+        try:
+            df = load_price(tk, "6mo")
+            if df is None:
+                continue
+
+            lp = float(df["close"].iloc[-1])
+            if lp < MIN_PRICE_IDR:
+                continue
+            if float(df["volume"].iloc[-1]) < MIN_VOLUME_LOT:
+                continue
+
+            is_pump, pump_reason = is_goreng_pump(df)
+            if is_pump:
+                print(f"  ⚠️  {tk}: Goreng — {pump_reason}")
+                continue
+
+            r = compute_score_v3(df, tk, ihsg_df, regime)
+            if r is None:
+                continue
+            if r.get("blocked"):
+                blocked_log.append(f"  ⛔ {tk}: {r['reason']}")
+                continue
+
+            r["session"] = session
+
+            # Proven tickers get lower threshold
+            eff_threshold = MIN_SCORE_PROVEN if tk in PROVEN_TICKERS else threshold
+
+            if r["score"] < eff_threshold:
+                continue
+            if r["tp_pct"] < TP_MIN_PCT:
+                continue
+            if r["sl_pct"] > SL_MAX_PCT:
+                continue
+
+            # ── POST_OPEN: tambahan intraday confirmation ──────────────
+            if post_open_mode:
+                intra = calc_intraday_confirmation(tk, df)
+                r["intraday"] = intra
+                if not intra["confirmed"]:
+                    blocked_log.append(
+                        f"  📉 {tk}: Intraday reject — {intra['reason']}"
+                    )
+                    continue
+                # Gunakan harga intraday sebagai entry yang lebih akurat
+                if intra["intraday_price"] and intra["intraday_price"] > 0:
+                    new_entry = intra["intraday_price"]
+                    atr_v     = r["atr_v"]
+                    sl_new    = max(round(new_entry - 1.5 * atr_v, 0),
+                                    round(float(df["low"].tail(10).min()) * 0.97, 0))
+                    tp_new    = round(new_entry + 2.5 * (new_entry - sl_new), 0)
+                    r["lp"]     = new_entry
+                    r["sl"]     = sl_new
+                    r["tp"]     = tp_new
+                    r["sl_pct"] = round((new_entry - sl_new) / new_entry * 100, 1)
+                    r["tp_pct"] = round((tp_new - new_entry) / new_entry * 100, 1)
+                    r["rationale"] += f" · Intraday {intra['intraday_price']:,.0f}"
+                print(f"  ✅ {tk}: {r['score']}/100 | VWAP Rp{intra['vwap']:,.0f}"
+                      f" | Vol {intra['vol_pace']:.1f}x | Gap {intra['gap_pct']:+.1f}%")
+            else:
+                print(f"  ✅ {tk}: {r['score']}/100 | {r['signal_type']} | "
+                      f"Wyckoff {r['wp']} | VCP {r['vcp_grade']} | "
+                      f"CMF {r['cmf_v']:+.3f} | Weekly {r['weekly_score']}")
+
+            candidates.append(r)
+            time.sleep(0.3)
+
+        except Exception as e:
+            print(f"  ⚠️  {tk}: {e}")
+            continue
+
+    return candidates, blocked_log
+
+
 def scan_once(session: str) -> list:
     print(f"\n{'='*58}")
     print(f"BandarAI Scanner v3 — {session}")
     print(f"Time: {datetime.now().strftime('%H:%M:%S WIB')}")
     print(f"{'='*58}")
 
-    # Load IHSG untuk market regime
+    # POST_OPEN = jam 10:00 WIB, konfirmasi intraday
+    post_open_mode = (session == "POST_OPEN")
+
+    # Load IHSG
     print("📊 Loading IHSG regime...")
     try:
         raw = yf.download("^JKSE", period="1y", interval="1d",
@@ -591,93 +693,70 @@ def scan_once(session: str) -> list:
         print("⛔ CRASH regime — SEMUA sinyal dihentikan")
         return []
 
-    # Ticker cooldown
+    # Cooldown check
     cooldown_tickers = get_recent_signal_tickers(days=5)
     if cooldown_tickers:
-        print(f"⏱️  Cooldown ({len(cooldown_tickers)} tickers sinyal < 5 hari): {', '.join(sorted(cooldown_tickers))}")
+        print(f"⏱️  Cooldown: {', '.join(sorted(cooldown_tickers))}")
 
-    # Threshold berdasarkan regime
+    # Threshold
     threshold = MIN_SCORE_TO_SIGNAL
     if regime["regime"] == "RISK_OFF":
-        threshold = max(threshold, 75)  # lebih ketat
+        threshold = max(threshold, 75)
     elif regime["regime"] == "CORRECTION":
         threshold = max(threshold, 70)
 
-    candidates = []
-    blocked_log = []
+    # Tentukan watchlist yang dipakai
+    try:
+        from config import WATCHLIST_CORE, POST_OPEN_CORE_ONLY
+        core_list     = WATCHLIST_CORE
+        extended_list = [t for t in WATCHLIST if t not in WATCHLIST_CORE]
+    except ImportError:
+        core_list     = WATCHLIST
+        extended_list = []
+        POST_OPEN_CORE_ONLY = True
 
-    for tk in WATCHLIST:
-        # Blacklist check
-        if tk in TICKER_BLACKLIST:
-            continue
-        # Cooldown check
-        if tk in cooldown_tickers:
-            continue
+    # ── SCAN CORE DULU ──────────────────────────────────────────────────
+    print(f"\n▶ Scanning CORE ({len(core_list)} saham)...")
+    if post_open_mode:
+        print(f"  Mode: POST_OPEN — intraday confirmation aktif")
 
-        try:
-            df = load_price(tk, "6mo")
-            if df is None:
-                continue
+    candidates, blocked_log = _scan_tickers(
+        core_list, session, ihsg_df, regime,
+        threshold, cooldown_tickers, post_open_mode
+    )
 
-            lp = float(df["close"].iloc[-1])
-            if lp < MIN_PRICE_IDR:
-                continue
-            if float(df["volume"].iloc[-1]) < MIN_VOLUME_LOT:
-                continue
+    # ── SCAN EXTENDED jika CORE belum dapat 3 sinyal ────────────────────
+    if not post_open_mode and len(candidates) < 3 and extended_list:
+        needed = 3 - len(candidates)
+        print(f"\n▶ CORE: {len(candidates)} sinyal."
+              f" Scanning EXTENDED {needed} lebih ({len(extended_list)} saham)...")
+        ext_cands, ext_blocked = _scan_tickers(
+            extended_list, session, ihsg_df, regime,
+            threshold + 5,   # threshold lebih ketat untuk extended
+            cooldown_tickers, False
+        )
+        candidates.extend(ext_cands)
+        blocked_log.extend(ext_blocked)
 
-            # Goreng filter
-            is_pump, pump_reason = is_goreng_pump(df)
-            if is_pump:
-                print(f"  ⚠️  {tk}: Goreng — {pump_reason}")
-                continue
-
-            # Full score v3
-            r = compute_score_v3(df, tk, ihsg_df, regime)
-            if r is None:
-                continue
-
-            if r.get("blocked"):
-                blocked_log.append(f"  ⛔ {tk}: {r['reason']}")
-                continue
-
-            r["session"] = session
-
-            # Threshold check
-            if r["score"] < threshold:
-                continue
-            if r["tp_pct"] < TP_MIN_PCT:
-                continue
-            if r["sl_pct"] > SL_MAX_PCT:
-                continue
-
-            candidates.append(r)
-            print(f"  ✅ {tk}: {r['score']}/100 | {r['signal_type']} | "
-                  f"Wyckoff {r['wp']} | VCP {r['vcp_grade']} | "
-                  f"CMF {r['cmf_v']:+.3f} | RS {r['rs20']} | Weekly {r['weekly_score']}")
-
-            time.sleep(0.3)
-
-        except Exception as e:
-            print(f"  ⚠️  {tk}: {e}")
-            continue
-
-    # Log blocked signals (untuk transparency)
+    # Log blocked
     if blocked_log:
-        print(f"\n  Blocked by gates ({len(blocked_log)}):")
-        for b in blocked_log[:5]:   # max 5 ditampilkan
+        print(f"\n  Blocked ({len(blocked_log)}):")
+        for b in blocked_log[:6]:
             print(b)
-        if len(blocked_log) > 5:
-            print(f"  ... dan {len(blocked_log)-5} lainnya")
+        if len(blocked_log) > 6:
+            print(f"  ... dan {len(blocked_log)-6} lainnya")
 
-    # Sort by score, ambil max 3 terbaik (bukan 5)
+    # Final sort + limit
     candidates.sort(key=lambda x: x["score"], reverse=True)
-    selected = candidates[:3]   # Max 3 — kualitas > kuantitas
+    selected = candidates[:3]
 
     if not selected:
-        print(f"\n  ℹ️  Tidak ada setup yang memenuhi semua gate hari ini.")
+        label = "POST_OPEN (intraday)" if post_open_mode else "harian"
+        print(f"\n  ℹ️  Tidak ada setup {label} yang memenuhi semua gate.")
     else:
-        print(f"\n  📊 {len(selected)} sinyal terpilih dari {len(candidates)} kandidat")
-        print(f"     ({len(blocked_log)} diblokir gates, {len(cooldown_tickers)} cooldown, {len(TICKER_BLACKLIST)} blacklist)")
+        print(f"\n  📊 {len(selected)} sinyal final"
+              f" dari {len(candidates)} kandidat"
+              f" ({len(blocked_log)} blocked)")
 
     return selected
 
@@ -706,3 +785,89 @@ def prepare_signal_record(r: dict) -> dict:
         "rationale"      : r["rationale"],
         "timestamp_wib"  : datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     }
+
+
+# ══════════════════════════════════════════════════════
+#  INTRADAY CONFIRMATION (untuk POST_OPEN session)
+#  Dijalankan jam 10:00 WIB setelah 1 jam market buka
+# ══════════════════════════════════════════════════════
+
+def calc_intraday_confirmation(ticker: str, df_daily) -> dict:
+    """
+    Ambil data intraday hari ini dan cek 4 hal:
+    1. VWAP — harga di atas VWAP = buyers in control
+    2. Volume pace — volume sudah sesuai ekspektasi
+    3. Gap direction — tidak gap down atau gap up ekstrem
+    4. Price vs open — tidak reversal tajam dari open
+
+    Return: {"confirmed": bool, "reason": str,
+             "intraday_price": float, "vwap": float, "vol_pace": float}
+    """
+    DEFAULT_PASS = {
+        "confirmed": True, "reason": "No intraday data — skip check",
+        "intraday_price": None, "vwap": 0, "vol_pace": 1.0
+    }
+    try:
+        df_i = yf.download(
+            ticker + ".JK", period="1d", interval="5m",
+            progress=False, auto_adjust=True
+        )
+        if df_i is None or df_i.empty or len(df_i) < 4:
+            return DEFAULT_PASS
+
+        if isinstance(df_i.columns, pd.MultiIndex):
+            df_i.columns = df_i.columns.get_level_values(0)
+        df_i = df_i.rename(columns={
+            "Open":"open", "High":"high", "Low":"low",
+            "Close":"close", "Volume":"volume"
+        }).dropna()
+        if len(df_i) < 4:
+            return DEFAULT_PASS
+
+        # Normalize volume kalau dalam satuan shares
+        if df_i["volume"].median() > 5e8:
+            df_i["volume"] = df_i["volume"] / 100
+
+        # ── VWAP
+        tp_i   = (df_i["high"] + df_i["low"] + df_i["close"]) / 3
+        vwap   = float((tp_i * df_i["volume"]).sum() / (df_i["volume"].sum() + 1))
+        price  = float(df_i["close"].iloc[-1])
+        open_p = float(df_i["open"].iloc[0])
+
+        # ── Volume pace
+        # Di jam 10:00 WIB (~60 menit setelah buka), harap ~30% daily vol
+        avg_daily = float(df_daily["volume"].tail(10).mean()) if df_daily is not None else 0
+        intra_vol = float(df_i["volume"].sum())
+        vol_pace  = intra_vol / (avg_daily * 0.30 + 1) if avg_daily > 0 else 1.0
+
+        # ── Gap dari close kemarin
+        prev_close = float(df_daily["close"].iloc[-1]) if df_daily is not None else price
+        gap_pct    = (open_p - prev_close) / prev_close * 100
+
+        # ── Price vs open
+        pvo = (price - open_p) / open_p * 100
+
+        # ── Decision
+        fails = []
+        if price < vwap * 0.998:
+            fails.append(f"Di bawah VWAP Rp{vwap:,.0f}")
+        if pvo < -2.5:
+            fails.append(f"Reversal dari open -{abs(pvo):.1f}%")
+        if gap_pct > 5.0:
+            fails.append(f"Gap up ekstrem +{gap_pct:.1f}% (exhaustion)")
+        if gap_pct < -3.0:
+            fails.append(f"Gap down -{abs(gap_pct):.1f}% (breakdown)")
+        if vol_pace < 0.55:
+            fails.append(f"Volume pace {vol_pace:.1f}x (kurang konviksi)")
+
+        return {
+            "confirmed"      : len(fails) == 0,
+            "reason"         : " · ".join(fails) if fails else "Intraday ✅",
+            "intraday_price" : round(price, 0),
+            "vwap"           : round(vwap, 0),
+            "vol_pace"       : round(vol_pace, 2),
+            "gap_pct"        : round(gap_pct, 2),
+            "pvo"            : round(pvo, 2),
+        }
+    except Exception as e:
+        return {**DEFAULT_PASS, "reason": f"Intraday error: {e}"}
