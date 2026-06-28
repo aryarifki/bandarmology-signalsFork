@@ -285,7 +285,6 @@ if not closed_df.empty:
             legend=dict(bgcolor="#f1f8f1", bordercolor="#c8e6c9",
                         font=dict(size=11), orientation="h", y=1.08),
             hovermode="x unified",
-            plot_bgcolor="#fafffe",
         )
         st.plotly_chart(fig, use_container_width=True)
 
