@@ -1,12 +1,12 @@
 """
 Database layer — pakai CSV yang disimpan di GitHub repo.
-Kenapa CSV bukan SQLite? Karena GitHub Actions tidak bisa
-menyimpan file binary antar-run. CSV bisa di-commit ke repo.
+FIX: Tambah fungsi init_db() yang dibutuhkan track_record.py
 """
 import os
 import pandas as pd
 from datetime import datetime
-from config import SIGNALS_CSV
+
+SIGNALS_CSV = "data/signals.csv"
 
 COLUMNS = [
     "id", "ticker", "signal_type", "session",
@@ -20,40 +20,38 @@ COLUMNS = [
 ]
 
 
+def init_db():
+    """Buat folder data/ dan signals.csv kosong kalau belum ada."""
+    os.makedirs("data", exist_ok=True)
+    if not os.path.exists(SIGNALS_CSV):
+        pd.DataFrame(columns=COLUMNS).to_csv(SIGNALS_CSV, index=False)
+
+
 def _load() -> pd.DataFrame:
     """Load signals CSV. Buat baru kalau belum ada."""
-    os.makedirs(os.path.dirname(SIGNALS_CSV), exist_ok=True)
-    if os.path.exists(SIGNALS_CSV):
-        try:
-            df = pd.read_csv(SIGNALS_CSV, dtype=str)
-            # Ensure all columns exist
-            for col in COLUMNS:
-                if col not in df.columns:
-                    df[col] = ""
-            return df[COLUMNS]
-        except Exception as e:
-            print(f"  ⚠️  CSV load error: {e} — creating fresh")
-    return pd.DataFrame(columns=COLUMNS)
+    init_db()
+    try:
+        df = pd.read_csv(SIGNALS_CSV, dtype=str)
+        for col in COLUMNS:
+            if col not in df.columns:
+                df[col] = ""
+        return df[COLUMNS]
+    except Exception:
+        return pd.DataFrame(columns=COLUMNS)
 
 
 def _save(df: pd.DataFrame):
-    """Simpan DataFrame ke CSV."""
-    os.makedirs(os.path.dirname(SIGNALS_CSV), exist_ok=True)
+    os.makedirs("data", exist_ok=True)
     df[COLUMNS].to_csv(SIGNALS_CSV, index=False)
 
 
 def save_signal(signal: dict) -> bool:
-    """
-    Simpan sinyal baru. Return False jika ID sudah ada (duplicate).
-    """
     df = _load()
     if not df.empty and signal["id"] in df["id"].values:
-        return False   # duplicate
-
+        return False
     row = {col: signal.get(col, "") for col in COLUMNS}
     row["status"] = "OPEN"
-    new_row = pd.DataFrame([row])
-    df = pd.concat([df, new_row], ignore_index=True)
+    df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
     _save(df)
     return True
 
@@ -61,12 +59,10 @@ def save_signal(signal: dict) -> bool:
 def update_signal_outcome(signal_id: str, status: str,
                            exit_price: float, pnl_pct: float,
                            days_held: int, notes: str = "") -> bool:
-    """Update sinyal OPEN → WIN / LOSS / EXPIRED."""
     df = _load()
     mask = (df["id"] == signal_id) & (df["status"] == "OPEN")
     if not mask.any():
         return False
-
     df.loc[mask, "status"]         = status
     df.loc[mask, "exit_price"]     = str(exit_price)
     df.loc[mask, "exit_timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -78,18 +74,14 @@ def update_signal_outcome(signal_id: str, status: str,
 
 
 def get_open_signals() -> list:
-    """Return list of dict untuk sinyal OPEN."""
     df = _load()
     if df.empty:
         return []
-    open_df = df[df["status"] == "OPEN"]
-    return open_df.to_dict("records")
+    return df[df["status"] == "OPEN"].to_dict("records")
 
 
 def get_all_signals_df() -> pd.DataFrame:
-    """Return semua sinyal sebagai DataFrame untuk dashboard."""
     df = _load()
-    # Convert numeric columns
     for col in ["entry_low", "entry_high", "tp_price", "sl_price",
                 "tp_pct", "sl_pct", "score", "exit_price", "pnl_pct", "days_held"]:
         if col in df.columns:
@@ -98,26 +90,24 @@ def get_all_signals_df() -> pd.DataFrame:
 
 
 def get_stats() -> dict:
-    """Hitung statistik keseluruhan."""
     df = get_all_signals_df()
     if df.empty:
-        return {"total": 0, "wins": 0, "losses": 0, "expired": 0,
-                "open_count": 0, "win_rate": 0, "avg_pnl": 0,
-                "avg_win": 0, "avg_loss": 0, "best_trade": 0, "worst_trade": 0}
-
-    wins     = int((df["status"] == "WIN").sum())
-    losses   = int((df["status"] == "LOSS").sum())
-    expired  = int((df["status"] == "EXPIRED").sum())
-    open_c   = int((df["status"] == "OPEN").sum())
-    total    = len(df)
-    closed   = wins + losses
-
+        return {
+            "total": 0, "wins": 0, "losses": 0, "expired": 0,
+            "open_count": 0, "win_rate": 0, "avg_pnl": 0,
+            "avg_win": 0, "avg_loss": 0, "best_trade": 0,
+            "worst_trade": 0, "total_closed": 0,
+        }
+    wins      = int((df["status"] == "WIN").sum())
+    losses    = int((df["status"] == "LOSS").sum())
+    expired   = int((df["status"] == "EXPIRED").sum())
+    open_c    = int((df["status"] == "OPEN").sum())
+    closed    = wins + losses
     closed_df = df[df["status"].isin(["WIN", "LOSS"])]
     win_df    = df[df["status"] == "WIN"]
     loss_df   = df[df["status"] == "LOSS"]
-
     return {
-        "total"       : total,
+        "total"       : len(df),
         "wins"        : wins,
         "losses"      : losses,
         "expired"     : expired,
