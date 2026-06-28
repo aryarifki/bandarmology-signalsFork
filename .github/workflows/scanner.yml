@@ -1,0 +1,82 @@
+name: 📊 Signal Scanner
+
+# Jadwal otomatis (UTC = WIB - 7 jam):
+# 08:30 WIB = 01:30 UTC
+# 13:00 WIB = 06:00 UTC
+# 16:30 WIB = 09:30 UTC
+on:
+  schedule:
+    - cron: '30 1 * * 1-5'   # Pre-Market  08:30 WIB
+    - cron: '0 6 * * 1-5'    # Midday      13:00 WIB
+    - cron: '30 9 * * 1-5'   # Post-Market 16:30 WIB
+  workflow_dispatch:
+    inputs:
+      session:
+        description: 'Session to run'
+        required: false
+        default: 'PRE_MARKET'
+        type: choice
+        options: [PRE_MARKET, MIDDAY, POST_MARKET]
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # Butuh untuk commit signals.csv
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Determine session from schedule time
+        id: session
+        run: |
+          # Kalau di-trigger manual, pakai input
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "SESSION=${{ github.event.inputs.session }}" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          # Kalau schedule, tentukan dari jam UTC
+          HOUR=$(date -u +%H)
+          MIN=$(date -u +%M)
+          TIME_MINS=$((10#$HOUR * 60 + 10#$MIN))
+          if [ $TIME_MINS -lt 240 ]; then   # sebelum 04:00 UTC
+            echo "SESSION=PRE_MARKET" >> $GITHUB_OUTPUT
+          elif [ $TIME_MINS -lt 480 ]; then  # 04:00-08:00 UTC
+            echo "SESSION=MIDDAY" >> $GITHUB_OUTPUT
+          else
+            echo "SESSION=POST_MARKET" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Run Signal Scanner
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
+          STOCKBIT_TOKEN:     ${{ secrets.STOCKBIT_TOKEN }}
+          SESSION:            ${{ steps.session.outputs.SESSION }}
+        run: python3 run_scan.py ${{ steps.session.outputs.SESSION }}
+
+      - name: Commit updated signals.csv
+        run: |
+          git config user.name  "Bandarmology Bot 🤖"
+          git config user.email "bot@bandarmology.pro"
+          git add data/signals.csv
+          # Hanya commit kalau ada perubahan
+          if git diff --staged --quiet; then
+            echo "ℹ️  No changes to commit (no new signals)"
+          else
+            git commit -m "📊 Signals: ${{ steps.session.outputs.SESSION }} $(date -u '+%Y-%m-%d %H:%M UTC')"
+            git push
+            echo "✅ signals.csv updated and pushed"
+          fi
