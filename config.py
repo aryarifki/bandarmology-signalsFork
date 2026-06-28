@@ -1,115 +1,78 @@
 """
-BandarAI — Config
-Watchlist diperluas ke 80+ saham dalam 3 tier.
-Scanner memproses semua tier, difilter oleh volume + goreng filter + score.
+BandarAI — Config v2
+Perubahan: WATCHLIST_CORE (15 saham proven), PROVEN_TICKERS, post-open settings
 """
 import os
 
-# ─── TELEGRAM ─────────────────────────────────────────────────────────
+# ─── TELEGRAM ──────────────────────────────────────────────────────────
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "ISI_TOKEN_BOT_KAMU")
-TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID",   "ISI_CHAT_ID_CHANNEL")
+TELEGRAM_CHAT_ID   = os.environ.get("TELEGRAM_CHAT_ID",   "ISI_CHAT_ID_CHANNEL")
+STOCKBIT_TOKEN     = os.environ.get("STOCKBIT_TOKEN", "")
 
-# ─── STOCKBIT (opsional) ──────────────────────────────────────────────
-STOCKBIT_TOKEN = os.environ.get("STOCKBIT_TOKEN", "")
-
-# ─── PATHS ────────────────────────────────────────────────────────────
+# ─── PATHS ─────────────────────────────────────────────────────────────
 SIGNALS_CSV = "data/signals.csv"
 
-# ─── WATCHLIST ────────────────────────────────────────────────────────
-# Tier 1: Blue chip & LQ45 core — liquid, data lengkap di Yahoo Finance
-WATCHLIST_T1 = [
-    # Perbankan
-    "BBCA", "BBRI", "BMRI", "BBNI", "BJTM", "BJBR",
-    # Energi & tambang besar
-    "BREN", "BRPT", "TPIA", "CUAN", "ADRO", "ADMR",
-    "MDKA", "BYAN", "PTBA", "AMMN", "MEDC", "PGAS",
-    # Consumer & farmasi
-    "KLBF", "ICBP", "INDF", "MYOR", "SIDO", "ULTJ",
-    # Infrastruktur & manufaktur
-    "ASII", "UNTR", "JSMR", "AKRA", "SMGR", "INTP",
-    # Telco & tech
-    "TLKM", "DCII", "TOWR", "GOTO", "BUKA",
-    # Properti & konstruksi
-    "SSIA", "CDIA", "PANI", "BSDE", "CTRA", "PWON",
+# ─── WATCHLIST CORE (15 saham) ─────────────────────────────────────────
+# Diprioritaskan di semua sesi. POST_OPEN hanya scan saham ini.
+# Dipilih berdasarkan: backtest WR, likuiditas, kesesuaian Wyckoff CMF.
+WATCHLIST_CORE = [
+    # Proven dari backtest (WR >40%)
+    "MDKA", "ADRO", "PTBA", "ULTJ",
+    # Banking liquid (dengan v3 gates, Phase B lebih terfilter)
+    "BBCA", "BBRI", "BMRI", "BBNI",
+    # Mining/energi momentum
+    "AMMN", "BYAN", "NCKL", "MBAP",
+    # Growth/infrastruktur
+    "DCII", "TOWR",
+    # Consumer solid
+    "INDF",
 ]
 
-# Tier 2: Mid cap — potensi return lebih tinggi, perlu volume filter lebih ketat
-WATCHLIST_T2 = [
+# Saham yang sudah terbukti bagus dari backtest — threshold lebih rendah
+PROVEN_TICKERS = {"MDKA", "ADRO", "PTBA", "ULTJ"}
+
+# ─── WATCHLIST EXTENDED (scan setelah CORE jika belum dapat 3 sinyal) ──
+WATCHLIST_EXTENDED = [
     # Tambang mid-cap
-    "NCKL", "NICL", "MBAP", "HRUM", "ITMG", "ANTM", "TINS",
-    "INDY", "DOID", "ABMM", "MBSS", "ESSA",
+    "HRUM", "ITMG", "ANTM", "TINS", "DOID", "ESSA", "MBSS",
     # Healthcare
-    "MIKA", "HEAL", "KAEF", "PYFA",
-    # Consumer & retail
-    "MAPA", "ACES", "RALS", "LPPF", "ERAA", "MTDL",
-    # Media & telco mid
-    "MNCN", "SCMA", "EMTK",
-    # Properti mid
-    "SMRA", "LPKR", "BEST", "WTON",
-    # Agrikultur
-    "AALI", "SIMP", "PALM", "DSNG",
-    # Lain-lain
-    "WSKT", "WIKA", "PTPP",
+    "HEAL",
+    # Consumer mid
+    "MYOR", "SIDO",
+    # Properti
+    "BSDE", "CTRA", "PWON",
+    # Lain-lain liquid
+    "AKRA", "SMGR", "INTP", "JSMR",
+    # Small-mid
+    "WTON", "AALI", "DSNG",
 ]
 
-# Tier 3: Small-mid cap dengan return potential tinggi
-# Volume filter lebih ketat (MIN_VOLUME_LOT_T3)
-WATCHLIST_T3 = [
-    # Energi baru & nikel
-    "NCKL", "WIFI", "RAJA", "ENRG", "RATU",
-    # Tech & digital
-    "WIRG", "FILM", "MLPL",
-    # Tambang kecil
-    "PTRO", "HRTA", "BRMS", "STAA",
-    # Consumer small
-    "MIDI", "HERO", "MCAS",
-    # Properti small
-    "TOPS", "BKSL",
-    # Manufaktur small
-    "SMIL", "VKTR", "IMPC",
-]
+# Gabungan semua (CORE dulu, baru EXTENDED)
+WATCHLIST = list(dict.fromkeys(WATCHLIST_CORE + WATCHLIST_EXTENDED))
 
-# Semua tier digabung — scanner proses semuanya
-# Volume filter per tier yang menentukan lolos atau tidak
-WATCHLIST = list(dict.fromkeys(WATCHLIST_T1 + WATCHLIST_T2 + WATCHLIST_T3))
-
-# Tier mapping untuk volume filter berbeda
+# Tier mapping untuk volume filter
 TICKER_TIER = {}
-for t in WATCHLIST_T1: TICKER_TIER[t] = 1
-for t in WATCHLIST_T2: TICKER_TIER[t] = 2
-for t in WATCHLIST_T3: TICKER_TIER[t] = 3
+for t in WATCHLIST_CORE:     TICKER_TIER[t] = 1
+for t in WATCHLIST_EXTENDED: TICKER_TIER[t] = 2
 
-# ─── VOLUME THRESHOLD PER TIER ────────────────────────────────────────
-# Tier 1: minimal 500k lot/hari (liquid)
-# Tier 2: minimal 200k lot/hari
-# Tier 3: minimal 100k lot/hari (small cap boleh kurang liquid)
-MIN_VOLUME_LOT_BY_TIER = {
-    1: 500_000,
-    2: 200_000,
-    3: 100_000,
-}
-MIN_VOLUME_LOT = 100_000  # default fallback
+# ─── SIGNAL THRESHOLDS ─────────────────────────────────────────────────
+MIN_SCORE_TO_SIGNAL  = 65
+MIN_SCORE_STRONG_BUY = 78
+MAX_SIGNALS_PER_SESI = 3     # Kualitas > kuantitas
+MIN_PRICE_IDR        = 50
+MIN_VOLUME_LOT       = 100_000
 
-# ─── SIGNAL THRESHOLDS ────────────────────────────────────────────────
-MIN_SCORE_TO_SIGNAL = 65
-MIN_SCORE_STRONG_BUY = 75
-MAX_SIGNALS_PER_SESI = 5     # maksimum 5 sinyal per sesi
-MIN_PRICE_IDR = 50    # turunkan ke 50 agar small cap bisa masuk
+# Threshold lebih rendah untuk proven tickers
+MIN_SCORE_PROVEN     = 62
 
-# ─── TARGETS ──────────────────────────────────────────────────────────
-TP_MIN_PCT = 5.0    # naikkan ke 5% untuk small cap (return lebih tinggi)
-SL_MAX_PCT = 7.0    # naikkan ke 7% untuk small cap (volatilitas lebih tinggi)
+# ─── TP/SL ─────────────────────────────────────────────────────────────
+TP_MIN_PCT    = 5.0    # minimum 5% untuk worthwhile
+SL_MAX_PCT    = 7.0    # maximum 7% stop loss
 HOLD_MAX_DAYS = 20
 
-# ─── GORENG FILTER (lebih ketat untuk small cap) ──────────────────────
-# Pump threshold per tier — T3 lebih ketat karena prone goreng
-PUMP_PCT_BY_TIER = {
-    1: 10.0,   # Blue chip: pump >10% dalam 3 hari = suspicious
-    2:  8.0,   # Mid cap: pump >8%
-    3:  6.0,   # Small cap: pump >6% = kemungkinan goreng
-}
-PUMP_VOLUME_MULT = {
-    1: 5.0,    # Blue chip: volume >5x = suspicious
-    2: 4.0,
-    3: 3.0,    # Small cap: volume >3x = hati-hati
-}
+# ─── POST-OPEN SCAN SETTINGS ───────────────────────────────────────────
+# Scan ke-4 per hari di jam 10:00 WIB setelah konfirmasi intraday
+POST_OPEN_CORE_ONLY    = True   # POST_OPEN hanya scan WATCHLIST_CORE
+POST_OPEN_MIN_VOL_PACE = 0.60   # Volume harus minimal 60% dari ekspektasi
+POST_OPEN_MAX_GAP_UP   = 5.0    # Gap up > 5% = exhaustion risk, skip
+POST_OPEN_MAX_GAP_DOWN = 3.0    # Gap down > 3% = breakdown, skip
