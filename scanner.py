@@ -183,9 +183,9 @@ def check_hard_gates(df, wp: str, cmf_v: float, mfi_v: float,
 
     # ── Gate 3: Phase B gates — strict!
     if wp == "B":
-        if cmf_v < 0.12:
-            return False, f"Phase B + CMF {cmf_v:+.3f} < 0.12 (inflow lemah)"
-        if mfi_v > 52:
+        if cmf_v < 0.08:
+            return False, f"Phase B + CMF {cmf_v:+.3f} < 0.08 (inflow lemah)"
+        if mfi_v > 58:
             return False, f"Phase B + MFI {mfi_v:.0f} > 52 (belum oversold)"
         obv_up_10 = float(obv_s.iloc[-1]) > float(obv_s.iloc[-min(10, n-1)])
         if not obv_up_10:
@@ -198,7 +198,7 @@ def check_hard_gates(df, wp: str, cmf_v: float, mfi_v: float,
     # Spring recovery secara natural push RSI naik dari extreme oversold.
     # RSI tinggi pada Phase C = konfirmasi kekuatan recovery, bukan bahaya.
     rsi_v = float(rsi(p).iloc[-1])
-    if wp == "B" and rsi_v > 65:
+    if wp == "B" and rsi_v > 70:
         return False, f"Phase B + RSI {rsi_v:.0f} > 65 (overbought saat konsolidasi)"
     if wp == "D" and rsi_v > 72:
         return False, f"Phase D + RSI {rsi_v:.0f} > 72 (terlalu extend)"
