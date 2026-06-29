@@ -491,14 +491,9 @@ def compute_score_v3(df, ticker: str, ihsg_df, regime: dict) -> dict:
     raw = int(np.clip(raw, 0, 100))
 
     # ── REGIME MULTIPLIER ─────────────────────────────────
-    # CRASH/BEAR/RISK_OFF: hanya Phase C/D diizinkan
-    crash_bear = regime.get("regime") in ("CRASH","BEAR","RISK_OFF")
-    if crash_bear and wp not in ("C","D"):
-        # Phase B dengan CMF kuat boleh jalan di bear market
-        if not (wp == "B" and cmf_v >= 0.15):
-            return {"blocked": True,
-                    "reason": f"{regime.get('regime')} — hanya Phase C/D (atau B+CMF>=0.15)",
-                    "wp": wp, "ticker": ticker}
+    # Phase A/E sudah diblok di check_hard_gates.
+    # Di semua regime: Phase B/C/D diizinkan — score yg memfilter.
+    # Phase C/D dapat bonus score sehingga naturally lebih mudah lolos.
 
     final = int(np.clip(round(raw * regime.get("multiplier", 1.0)), 0, 100))
 
