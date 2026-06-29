@@ -234,9 +234,12 @@ def get_market_regime(ihsg_df) -> dict:
     above_ma200 = lp > ma200v
     ma50_up     = float(ma50.iloc[-1]) > float(ma50.iloc[-min(20,n-1)])
 
-    if dd < -20 or ret60 < -18:
-        return {"regime":"CRASH",       "multiplier":0.0, "ok":False,
+    if dd < -40 or ret60 < -28:
+        return {"regime":"CRASH",       "multiplier":0.65, "ok":True,
                 "desc":f"IHSG crash ({dd:.1f}%) — SEMUA sinyal dihentikan"}
+    elif dd < -20 or ret60 < -15:
+        return {"regime":"BEAR", "multiplier":0.72, "ok":True,
+                "desc":f"IHSG bear market ({dd:.1f}%) — hanya Phase C/D"}
     elif (dd < -10 and not above_ma50) or ret60 < -12:
         return {"regime":"RISK_OFF",    "multiplier":0.75,"ok":True,
                 "desc":f"IHSG risk-off ({dd:.1f}%) — threshold dinaikkan, hanya Phase C/D"}
@@ -488,9 +491,9 @@ def compute_score_v3(df, ticker: str, ihsg_df, regime: dict) -> dict:
     raw = int(np.clip(raw, 0, 100))
 
     # ── REGIME MULTIPLIER ─────────────────────────────────
-    # RISK_OFF: hanya Phase C/D diizinkan
-    if regime.get("regime") == "RISK_OFF" and wp not in ("C","D"):
-        return {"blocked": True, "reason": "RISK_OFF regime — hanya Phase C/D",
+    # CRASH/BEAR/RISK_OFF: hanya Phase C/D diizinkan
+    if regime.get("regime") in ("CRASH","BEAR","RISK_OFF") and wp not in ("C","D"):
+        return {"blocked": True, "reason": f"{regime.get('regime')} — hanya Phase C/D diizinkan",
                 "wp": wp, "ticker": ticker}
 
     final = int(np.clip(round(raw * regime.get("multiplier", 1.0)), 0, 100))
