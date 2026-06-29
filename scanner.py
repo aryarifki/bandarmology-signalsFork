@@ -492,9 +492,13 @@ def compute_score_v3(df, ticker: str, ihsg_df, regime: dict) -> dict:
 
     # ── REGIME MULTIPLIER ─────────────────────────────────
     # CRASH/BEAR/RISK_OFF: hanya Phase C/D diizinkan
-    if regime.get("regime") in ("CRASH","BEAR","RISK_OFF") and wp not in ("C","D"):
-        return {"blocked": True, "reason": f"{regime.get('regime')} — hanya Phase C/D diizinkan",
-                "wp": wp, "ticker": ticker}
+    crash_bear = regime.get("regime") in ("CRASH","BEAR","RISK_OFF")
+    if crash_bear and wp not in ("C","D"):
+        # Phase B dengan CMF kuat boleh jalan di bear market
+        if not (wp == "B" and cmf_v >= 0.15):
+            return {"blocked": True,
+                    "reason": f"{regime.get('regime')} — hanya Phase C/D (atau B+CMF>=0.15)",
+                    "wp": wp, "ticker": ticker}
 
     final = int(np.clip(round(raw * regime.get("multiplier", 1.0)), 0, 100))
 
@@ -593,7 +597,7 @@ def _scan_tickers(tickers: list, session: str, ihsg_df,
             continue
 
         try:
-            df = load_price(tk, "6mo")
+            df = load_price(tk, "1y")
             if df is None:
                 continue
 
