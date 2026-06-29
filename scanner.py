@@ -623,6 +623,9 @@ def _scan_tickers(tickers: list, session: str, ihsg_df,
 
             # Proven tickers get lower threshold
             eff_threshold = MIN_SCORE_PROVEN if tk in PROVEN_TICKERS else threshold
+            # Kurangi threshold saat bear/crash (kompensasi multiplier)
+            if regime.get("regime") in ("BEAR","CRASH","RISK_OFF"):
+                eff_threshold = max(42, eff_threshold - 15)
 
             if r["score"] < eff_threshold:
                 continue
