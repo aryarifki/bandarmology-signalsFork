@@ -731,7 +731,9 @@ def scan_once(session: str) -> list:
     )
 
     # ── SCAN EXTENDED jika CORE belum dapat 3 sinyal ────────────────────
-    if not post_open_mode and len(candidates) < 3 and extended_list:
+    # POST_OPEN tetap boleh scan extended (skip intraday check utk speed,
+    # extended tidak wajib intraday — yg penting muncul kalau bagus)
+    if len(candidates) < 3 and extended_list:
         needed = 3 - len(candidates)
         print(f"\n▶ CORE: {len(candidates)} sinyal."
               f" Scanning EXTENDED {needed} lebih ({len(extended_list)} saham)...")
