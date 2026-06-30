@@ -552,8 +552,13 @@ def compute_score_v3(df, ticker: str, ihsg_df, regime: dict) -> dict:
 #  TICKER COOLDOWN — 1 ticker max 1x per 5 hari
 # ══════════════════════════════════════════════════════
 
-def get_recent_signal_tickers(days: int = 5) -> set:
-    """Ambil ticker yang sudah sinyal dalam N hari terakhir."""
+def get_recent_signal_tickers(session: str = "", days: int = 3) -> set:
+    """
+    Ambil ticker yang HARUS di-skip karena cooldown.
+    Logika: satu ticker tidak boleh sinyal lagi di sesi yang SAMA
+    dalam {days} hari terakhir. Tapi BOLEH muncul di sesi berbeda
+    (mis. PRE jam 08:00, lalu POST_OPEN jam 10:00 — harga sudah gerak).
+    """
     try:
         from database import get_all_signals_df
         df = get_all_signals_df()
@@ -562,7 +567,19 @@ def get_recent_signal_tickers(days: int = 5) -> set:
         cutoff = pd.Timestamp.now() - pd.Timedelta(days=days)
         df["ts"] = pd.to_datetime(df["timestamp_wib"], errors="coerce")
         recent = df[df["ts"] >= cutoff]
-        return set(recent["ticker"].unique())
+
+        # Kalau ada kolom session, filter cooldown per sesi yg sama
+        if session and "session" in recent.columns:
+            same_session = recent[recent["session"] == session]
+            # Skip ticker yg sinyal di sesi sama HARI INI
+            today = pd.Timestamp.now().normalize()
+            today_same = same_session[same_session["ts"] >= today]
+            return set(today_same["ticker"].unique())
+
+        # Fallback: cooldown ticker yg sinyal HARI INI (sesi apapun)
+        today = pd.Timestamp.now().normalize()
+        today_sigs = recent[recent["ts"] >= today]
+        return set(today_sigs["ticker"].unique())
     except Exception:
         return set()
 
@@ -699,7 +716,7 @@ def scan_once(session: str) -> list:
         return []
 
     # Cooldown check
-    cooldown_tickers = get_recent_signal_tickers(days=5)
+    cooldown_tickers = get_recent_signal_tickers(session=session, days=3)
     if cooldown_tickers:
         print(f"⏱️  Cooldown: {', '.join(sorted(cooldown_tickers))}")
 
