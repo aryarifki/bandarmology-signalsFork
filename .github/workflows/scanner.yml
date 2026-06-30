@@ -1,14 +1,14 @@
 name: 📊 Signal Scanner
 
 # Jadwal (UTC = WIB - 7 jam):
-# 08:30 WIB = 01:30 UTC  → PRE_MARKET
+# 08:00 WIB = 01:00 UTC  → PRE_MARKET
 # 10:00 WIB = 03:00 UTC  → POST_OPEN
 # 13:00 WIB = 06:00 UTC  → MIDDAY
 # 16:30 WIB = 09:30 UTC  → POST_MARKET
 
 on:
   schedule:
-    - cron: '30 1 * * 1-5'   # PRE_MARKET  08:30 WIB
+    - cron: '0 1 * * 1-5'    # PRE_MARKET  08:00 WIB
     - cron: '0 3 * * 1-5'    # POST_OPEN   10:00 WIB
     - cron: '0 6 * * 1-5'    # MIDDAY      13:00 WIB
     - cron: '30 9 * * 1-5'   # POST_MARKET 16:30 WIB
