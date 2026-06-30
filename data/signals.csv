@@ -1,1 +1,2 @@
 id,ticker,signal_type,session,entry_low,entry_high,tp_price,sl_price,tp_pct,sl_pct,score,wyckoff_phase,cmf_value,obv_direction,broker_crossing,vcp_grade,rs_interp,rationale,timestamp_wib,status,exit_price,exit_timestamp,pnl_pct,days_held,notes
+BMP-MYOR-20260630-PRE,MYOR,BUY,PRE_MARKET,1835.0,1853.0,2138.0,1714.0,16.5,6.6,53,B — Indeterminate,0.299,Rising ▲,—,NONE,OUTPERFORM ▲,CMF +0.299 (inflow kuat) · OBV naik ▲ · RS OUTPERFORM ▲,2026-06-30 16:22:43,OPEN,,,,,
