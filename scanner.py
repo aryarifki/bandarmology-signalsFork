@@ -238,7 +238,7 @@ def get_market_regime(ihsg_df) -> dict:
         return {"regime":"CRASH",       "multiplier":0.65, "ok":True,
                 "desc":f"IHSG crash ({dd:.1f}%) — SEMUA sinyal dihentikan"}
     elif dd < -20 or ret60 < -15:
-        return {"regime":"BEAR", "multiplier":0.72, "ok":True,
+        return {"regime":"BEAR", "multiplier":0.85, "ok":True,
                 "desc":f"IHSG bear market ({dd:.1f}%) — hanya Phase C/D"}
     elif (dd < -10 and not above_ma50) or ret60 < -12:
         return {"regime":"RISK_OFF",    "multiplier":0.75,"ok":True,
@@ -475,7 +475,7 @@ def compute_score_v3(df, ticker: str, ihsg_df, regime: dict) -> dict:
     fund = quick_fundamental_check(ticker)
 
     # ── TICKER ADJUSTMENT ─────────────────────────────────
-    ticker_adj = TICKER_PENALTY.get(ticker, 0) + TICKER_BONUS.get(ticker, 0)
+    ticker_adj = 0  # Disabled di bear market — kondisi berbeda dari backtest
 
     # ── WEIGHTED COMPOSITE ────────────────────────────────
     raw = int(np.clip(round(
@@ -620,7 +620,7 @@ def _scan_tickers(tickers: list, session: str, ihsg_df,
             eff_threshold = MIN_SCORE_PROVEN if tk in PROVEN_TICKERS else threshold
             # Kurangi threshold saat bear/crash (kompensasi multiplier)
             if regime.get("regime") in ("BEAR","CRASH","RISK_OFF"):
-                eff_threshold = max(42, eff_threshold - 15)
+                eff_threshold = max(30, eff_threshold - 28)  # BEAR: cukup rendah agar score nyata bisa lolos
 
             if r["score"] < eff_threshold:
                 continue
@@ -852,18 +852,21 @@ def calc_intraday_confirmation(ticker: str, df_daily) -> dict:
         # ── Price vs open
         pvo = (price - open_p) / open_p * 100
 
-        # ── Decision
+        # ── Decision — SOFT FILTER (hanya blok breakdown EKSTREM)
+        # Di bear market, sedikit gap down / di bawah VWAP itu normal.
+        # POST_OPEN hanya untuk proteksi dari breakdown parah, bukan
+        # menolak semua sinyal. Daily score sudah memfilter kualitas.
         fails = []
-        if price < vwap * 0.998:
-            fails.append(f"Di bawah VWAP Rp{vwap:,.0f}")
-        if pvo < -2.5:
-            fails.append(f"Reversal dari open -{abs(pvo):.1f}%")
-        if gap_pct > 5.0:
+        # Hanya reject kalau reversal TAJAM dari open (momentum jelas negatif)
+        if pvo < -4.0:
+            fails.append(f"Reversal tajam dari open -{abs(pvo):.1f}%")
+        # Hanya reject gap up EKSTREM (exhaustion nyata)
+        if gap_pct > 7.0:
             fails.append(f"Gap up ekstrem +{gap_pct:.1f}% (exhaustion)")
-        if gap_pct < -3.0:
-            fails.append(f"Gap down -{abs(gap_pct):.1f}% (breakdown)")
-        if vol_pace < 0.55:
-            fails.append(f"Volume pace {vol_pace:.1f}x (kurang konviksi)")
+        # Hanya reject gap down PARAH (breakdown nyata)
+        if gap_pct < -5.0:
+            fails.append(f"Gap down parah -{abs(gap_pct):.1f}% (breakdown)")
+        # VWAP & volume pace TIDAK lagi jadi blocker — hanya info
 
         return {
             "confirmed"      : len(fails) == 0,
