@@ -588,6 +588,8 @@ def get_recent_signal_tickers(session: str = "", days: int = 3) -> set:
 #  MAIN SCAN
 # ══════════════════════════════════════════════════════
 
+LAST_SCAN_DIAG = {}   # diagnosa scan terakhir, dibaca run_scan.py
+
 def _scan_tickers(tickers: list, session: str, ihsg_df,
                    regime: dict, threshold: int,
                    cooldown_tickers: set,
@@ -601,6 +603,7 @@ def _scan_tickers(tickers: list, session: str, ihsg_df,
 
     candidates  = []
     blocked_log = []
+    near_misses = []   # (ticker, score, eff_threshold) — utk diagnosa
 
     for tk in tickers:
         if tk in TICKER_BLACKLIST:
@@ -640,6 +643,7 @@ def _scan_tickers(tickers: list, session: str, ihsg_df,
                 eff_threshold = max(30, eff_threshold - 28)  # BEAR: cukup rendah agar score nyata bisa lolos
 
             if r["score"] < eff_threshold:
+                near_misses.append((tk, r["score"], eff_threshold))
                 continue
             if r["tp_pct"] < TP_MIN_PCT:
                 continue
@@ -682,7 +686,7 @@ def _scan_tickers(tickers: list, session: str, ihsg_df,
             print(f"  ⚠️  {tk}: {e}")
             continue
 
-    return candidates, blocked_log
+    return candidates, blocked_log, near_misses
 
 
 def scan_once(session: str) -> list:
@@ -742,7 +746,7 @@ def scan_once(session: str) -> list:
     if post_open_mode:
         print(f"  Mode: POST_OPEN — intraday confirmation aktif")
 
-    candidates, blocked_log = _scan_tickers(
+    candidates, blocked_log, near_misses = _scan_tickers(
         core_list, session, ihsg_df, regime,
         threshold, cooldown_tickers, post_open_mode
     )
@@ -754,13 +758,14 @@ def scan_once(session: str) -> list:
         needed = 3 - len(candidates)
         print(f"\n▶ CORE: {len(candidates)} sinyal."
               f" Scanning EXTENDED {needed} lebih ({len(extended_list)} saham)...")
-        ext_cands, ext_blocked = _scan_tickers(
+        ext_cands, ext_blocked, ext_near = _scan_tickers(
             extended_list, session, ihsg_df, regime,
             threshold + 5,   # threshold lebih ketat untuk extended
             cooldown_tickers, False
         )
         candidates.extend(ext_cands)
         blocked_log.extend(ext_blocked)
+        near_misses.extend(ext_near)
 
     # Log blocked
     if blocked_log:
@@ -773,6 +778,18 @@ def scan_once(session: str) -> list:
     # Final sort + limit
     candidates.sort(key=lambda x: x["score"], reverse=True)
     selected = candidates[:3]
+
+    # Simpan diagnosa utk dilaporkan run_scan.py ke Telegram
+    global LAST_SCAN_DIAG
+    near_misses.sort(key=lambda x: x[1], reverse=True)
+    LAST_SCAN_DIAG = {
+        "regime"     : regime.get("regime", "?"),
+        "regime_desc": regime.get("desc", ""),
+        "near"       : near_misses[:3],
+        "n_blocked"  : len(blocked_log),
+        "blocked_top": [b.strip() for b in blocked_log[:3]],
+        "n_cooldown" : len(cooldown_tickers),
+    }
 
     if not selected:
         label = "POST_OPEN (intraday)" if post_open_mode else "harian"
