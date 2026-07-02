@@ -43,11 +43,26 @@ def main():
 
     if not signals:
         print("ℹ️  Tidak ada sinyal hari ini.")
-        send_message(
-            f"📊 <b>{session_labels.get(SESSION, SESSION)}</b>\n\n"
-            f"ℹ️ <i>Tidak ada saham yang memenuhi semua kriteria hari ini.\n"
-            f"Score semua saham di bawah threshold — pasar belum memberikan setup yang ideal.</i>"
-        )
+        # Ambil diagnosa dari scanner agar pesan Telegram informatif
+        import scanner as _sc
+        diag = getattr(_sc, "LAST_SCAN_DIAG", {}) or {}
+        msg = (f"📊 <b>{session_labels.get(SESSION, SESSION)}</b>\n\n"
+               f"ℹ️ <i>Tidak ada saham yang lolos semua kriteria.</i>\n")
+        if diag.get("regime"):
+            msg += f"\n🌏 Regime: <b>{diag['regime']}</b>"
+        near = diag.get("near") or []
+        if near:
+            msg += "\n\n📈 <b>Terdekat dengan threshold:</b>"
+            for tk, sc_, th in near:
+                msg += f"\n  • {tk}: {sc_}/100 (butuh {th})"
+        bt = diag.get("blocked_top") or []
+        if bt:
+            msg += "\n\n⛔ <b>Contoh yang diblok gate:</b>"
+            for b in bt:
+                msg += f"\n  • {b[:70]}"
+        if diag.get("n_cooldown"):
+            msg += f"\n\n⏱️ Cooldown: {diag['n_cooldown']} ticker"
+        send_message(msg)
         return
 
     sent = 0
