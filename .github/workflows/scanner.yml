@@ -1,17 +1,22 @@
 name: 📊 Signal Scanner
 
-# Jadwal (UTC = WIB - 7 jam):
-# 08:00 WIB = 01:00 UTC  → PRE_MARKET
-# 10:00 WIB = 03:00 UTC  → POST_OPEN
-# 13:00 WIB = 06:00 UTC  → MIDDAY
-# 16:30 WIB = 09:30 UTC  → POST_MARKET
+# CATATAN soal jadwal GitHub Actions free tier:
+# Cron di menit :00 (jam bulat) SERING di-skip/delay karena jutaan
+# repo menjadwalkan di jam sama. Solusi: pakai menit ganjil (:37, :07)
+# dan majukan tiap sesi untuk kompensasi delay yang umum terjadi.
+#
+# Target WIB (UTC = WIB - 7):
+#   PRE_MARKET  ~08:00 WIB → dijadwal 00:37 UTC
+#   POST_OPEN   ~10:00 WIB → dijadwal 02:37 UTC
+#   MIDDAY      ~13:00 WIB → dijadwal 05:37 UTC
+#   POST_MARKET ~16:30 WIB → dijadwal 09:07 UTC
 
 on:
   schedule:
-    - cron: '0 1 * * 1-5'    # PRE_MARKET  08:00 WIB
-    - cron: '0 3 * * 1-5'    # POST_OPEN   10:00 WIB
-    - cron: '0 6 * * 1-5'    # MIDDAY      13:00 WIB
-    - cron: '30 9 * * 1-5'   # POST_MARKET 16:30 WIB
+    - cron: '37 0 * * 1-5'   # PRE_MARKET  ~08:00 WIB
+    - cron: '37 2 * * 1-5'   # POST_OPEN   ~10:00 WIB
+    - cron: '37 5 * * 1-5'   # MIDDAY      ~13:00 WIB
+    - cron: '7 9 * * 1-5'    # POST_MARKET ~16:30 WIB
   workflow_dispatch:
     inputs:
       session:
@@ -45,21 +50,28 @@ jobs:
       - name: Determine session
         id: session
         run: |
-          # Manual trigger: gunakan input langsung
+          # Manual trigger: pakai input langsung
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "SESSION=${{ github.event.inputs.session }}" >> $GITHUB_OUTPUT
             exit 0
           fi
 
-          # Scheduled: gunakan JAM UTC (lebih robust dari menit)
-          # Memberi buffer lebar untuk GitHub delay (bisa 15-60 menit)
+          # Scheduled: deteksi sesi dari JAM UTC dengan buffer LEBAR
+          # untuk mengakomodasi delay GitHub yang bisa 15-60 menit.
           HOUR=$(date -u +%H)
+          MIN=$(date -u +%M)
+          TOTAL=$((10#$HOUR * 60 + 10#$MIN))
 
-          if   [ "$HOUR" = "01" ] || [ "$HOUR" = "02" ]; then
+          # Window boundary (menit UTC), buffer utk delay s/d 60min:
+          #   PRE_MARKET  : 00:00 - 02:29  (< 150)
+          #   POST_OPEN   : 02:30 - 05:29  (< 330)
+          #   MIDDAY      : 05:30 - 08:59  (< 540)
+          #   POST_MARKET : 09:00+
+          if   [ $TOTAL -lt 150 ]; then
             echo "SESSION=PRE_MARKET"   >> $GITHUB_OUTPUT
-          elif [ "$HOUR" = "03" ] || [ "$HOUR" = "04" ]; then
+          elif [ $TOTAL -lt 330 ]; then
             echo "SESSION=POST_OPEN"    >> $GITHUB_OUTPUT
-          elif [ "$HOUR" -ge 5 ] && [ "$HOUR" -le 8 ]; then
+          elif [ $TOTAL -lt 540 ]; then
             echo "SESSION=MIDDAY"       >> $GITHUB_OUTPUT
           else
             echo "SESSION=POST_MARKET"  >> $GITHUB_OUTPUT
@@ -79,8 +91,8 @@ jobs:
           git config user.email "bot@bandarai.id"
           git add data/signals.csv
           if git diff --staged --quiet; then
-            echo "ℹ️  No new signals"
+            echo "No new signals"
           else
-            git commit -m "📊 ${{ steps.session.outputs.SESSION }} $(date -u '+%Y-%m-%d %H:%M UTC')"
+            git commit -m "signals ${{ steps.session.outputs.SESSION }} $(date -u '+%Y-%m-%d %H:%M UTC')"
             git push
           fi
