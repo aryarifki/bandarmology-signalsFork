@@ -10,6 +10,19 @@ from datetime import datetime
 from functools import wraps
 
 
+def _esc_html(s) -> str:
+    """
+    Escape karakter HTML sebelum masuk pesan Telegram (parse_mode=HTML).
+    KRITIS: pesan error Python (str(error), traceback) sering mengandung
+    '<', '>' (mis. "unsupported operand '<'", type reprs, dict reprs).
+    Tanpa escape ini, Telegram API MENOLAK SELURUH PESAN tanpa exception
+    di sisi kita -- errornya sendiri jadi tidak pernah kelihatan.
+    """
+    return (str(s).replace("&", "&amp;")
+                   .replace("<", "&lt;")
+                   .replace(">", "&gt;"))
+
+
 def send_error_alert(error: Exception, context: str = "", extra: str = ""):
     """
     Kirim pesan error ke Telegram admin.
@@ -43,19 +56,19 @@ def send_error_alert(error: Exception, context: str = "", extra: str = ""):
     msg = (
         f"🚨 <b>SYSTEM ERROR — BandarAI</b>\n\n"
         f"⏰ <b>Waktu:</b> {ts} WIB\n"
-        f"📄 <b>Script:</b> <code>{context}</code>\n"
-        f"❌ <b>Error:</b> <code>{str(error)[:300]}</code>\n"
+        f"📄 <b>Script:</b> <code>{_esc_html(context)}</code>\n"
+        f"❌ <b>Error:</b> <code>{_esc_html(str(error)[:300])}</code>\n"
     )
 
     if extra:
-        msg += f"ℹ️ <b>Detail:</b> {extra[:200]}\n"
+        msg += f"ℹ️ <b>Detail:</b> {_esc_html(extra[:200])}\n"
 
-    msg += f"\n<pre>{tb_short[:800]}</pre>"
+    msg += f"\n<pre>{_esc_html(tb_short[:800])}</pre>"
 
     if run_url:
         msg += f'\n\n🔗 <a href="{run_url}">Lihat log GitHub Actions</a>'
     if sha:
-        msg += f"\n📌 Commit: <code>{sha}</code> ({ref})"
+        msg += f"\n📌 Commit: <code>{_esc_html(sha)}</code> ({_esc_html(ref)})"
 
     msg += "\n\n⚠️ <i>Sinyal hari ini mungkin tidak terkirim. Cek segera.</i>"
 
@@ -85,11 +98,13 @@ def send_warning(message: str, context: str = ""):
     if not token or not chat_id or token in ("dummy", "ISI_TOKEN_BOT_KAMU"):
         return
     try:
+        safe_text = (f"⚠️ <b>WARNING — BandarAI</b>\n"
+                     f"{_esc_html(context)}\n{_esc_html(message[:400])}")
         requests.post(
             f"https://api.telegram.org/bot{token}/sendMessage",
             json={
                 "chat_id"   : chat_id,
-                "text"      : f"⚠️ <b>WARNING — BandarAI</b>\n{context}\n{message[:400]}",
+                "text"      : safe_text,
                 "parse_mode": "HTML",
             },
             timeout=10,
