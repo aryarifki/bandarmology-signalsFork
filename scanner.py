@@ -152,7 +152,7 @@ def wyckoff_phase(df, c, o):
 # ══════════════════════════════════════════════════════
 
 def check_hard_gates(df, wp: str, cmf_v: float, mfi_v: float,
-                     obv_s: pd.Series, vr: float) -> tuple:
+                     obv_s: pd.Series, vr: float, regime: dict = None) -> tuple:
     """
     Return (passes: bool, reason: str)
     Semua gates harus lolos sebelum masuk ke scoring.
@@ -166,8 +166,17 @@ def check_hard_gates(df, wp: str, cmf_v: float, mfi_v: float,
     if wp == "E":
         return False, "Phase E (Markup lanjut) — terlambat masuk, risiko distribusi"
 
-    # ── Gate 2: MA50 trend filter — HANYA beli di uptrend
-    if len(p) >= 50:
+    # ── Gate 2: MA50 trend filter
+    # PENTING: gate ini HANYA berlaku di kondisi market NORMAL/BULL.
+    # Saat IHSG turun tajam (BEAR/CRASH), hampir SEMUA saham otomatis
+    # di bawah MA50 -- itu definisi bear market. Memaksakan gate ini
+    # saat bear market memblok SEMUA saham tanpa terkecuali, padahal
+    # CMF kuat di tengah bear market justru sinyal paling berharga
+    # (akumulasi institusi saat harga rendah). Jadi gate MA50 untuk
+    # Phase B di-skip saat regime BEAR/CRASH/RISK_OFF -- CMF & MFI gate
+    # di bawah tetap jalan sebagai filter kualitas utama.
+    market_bearish = (regime or {}).get("regime") in ("BEAR", "CRASH", "RISK_OFF")
+    if len(p) >= 50 and not market_bearish:
         ma50 = float(p.rolling(50).mean().iloc[-1])
         lp   = float(p.iloc[-1])
         if wp == "B":
@@ -433,7 +442,7 @@ def compute_score_v3(df, ticker: str, ihsg_df, regime: dict) -> dict:
         return None
 
     # ── HARD GATES ────────────────────────────────────────
-    passes, gate_reason = check_hard_gates(df, wp, cmf_v, mfi_v, o_, vr)
+    passes, gate_reason = check_hard_gates(df, wp, cmf_v, mfi_v, o_, vr, regime)
     if not passes:
         return {"blocked": True, "reason": gate_reason,
                 "wp": wp, "ticker": ticker}
