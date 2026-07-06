@@ -43,26 +43,37 @@ def main():
 
     if not signals:
         print("ℹ️  Tidak ada sinyal hari ini.")
+
+        def _esc(s: str) -> str:
+            # WAJIB: escape karakter HTML sebelum masuk pesan parse_mode=HTML.
+            # Tanpa ini, teks seperti "CMF < 0.05" merusak parsing HTML
+            # Telegram dan MENGGAGALKAN SELURUH PESAN tanpa error terlihat.
+            return (str(s).replace("&", "&amp;")
+                            .replace("<", "&lt;")
+                            .replace(">", "&gt;"))
+
         # Ambil diagnosa dari scanner agar pesan Telegram informatif
         import scanner as _sc
         diag = getattr(_sc, "LAST_SCAN_DIAG", {}) or {}
         msg = (f"📊 <b>{session_labels.get(SESSION, SESSION)}</b>\n\n"
                f"ℹ️ <i>Tidak ada saham yang lolos semua kriteria.</i>\n")
         if diag.get("regime"):
-            msg += f"\n🌏 Regime: <b>{diag['regime']}</b>"
+            msg += f"\n🌏 Regime: <b>{_esc(diag['regime'])}</b>"
         near = diag.get("near") or []
         if near:
             msg += "\n\n📈 <b>Terdekat dengan threshold:</b>"
             for tk, sc_, th in near:
-                msg += f"\n  • {tk}: {sc_}/100 (butuh {th})"
+                msg += f"\n  • {_esc(tk)}: {sc_}/100 (butuh {th})"
         bt = diag.get("blocked_top") or []
         if bt:
             msg += "\n\n⛔ <b>Contoh yang diblok gate:</b>"
             for b in bt:
-                msg += f"\n  • {b[:70]}"
+                msg += f"\n  • {_esc(b[:70])}"
         if diag.get("n_cooldown"):
             msg += f"\n\n⏱️ Cooldown: {diag['n_cooldown']} ticker"
-        send_message(msg)
+        ok = send_message(msg)
+        if not ok:
+            print("⚠️  Telegram send gagal — cek format pesan / token")
         return
 
     sent = 0
