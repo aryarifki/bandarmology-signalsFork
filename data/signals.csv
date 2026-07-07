@@ -1,3 +1,4 @@
 id,ticker,signal_type,session,entry_low,entry_high,tp_price,sl_price,tp_pct,sl_pct,score,wyckoff_phase,cmf_value,obv_direction,broker_crossing,vcp_grade,rs_interp,rationale,timestamp_wib,status,exit_price,exit_timestamp,pnl_pct,days_held,notes
 BMP-MYOR-20260630-PRE,MYOR,BUY,PRE_MARKET,1835.0,1853.0,2138.0,1714.0,16.5,6.6,53,B — Indeterminate,0.299,Rising ▲,—,NONE,OUTPERFORM ▲,CMF +0.299 (inflow kuat) · OBV naik ▲ · RS OUTPERFORM ▲,2026-06-30 16:22:43,OPEN,,,,,
 BMP-INTP-20260707-MID,INTP,BUY,MIDDAY,4480.0,4525.0,5042.0,4255.0,12.5,5.0,50,B — Indeterminate,0.0798,Rising ▲,—,NONE,IN LINE →,OBV naik ▲,2026-07-07 08:53:14,OPEN,,,,,
+BMP-INTP-20260707-POST,INTP,BUY,POST_MARKET,4500.0,4545.0,5065.0,4274.0,12.6,5.0,51,B — Indeterminate,0.0949,Rising ▲,—,NONE,IN LINE →,CMF +0.095 (inflow) · OBV naik ▲,2026-07-07 12:07:50,OPEN,,,,,
