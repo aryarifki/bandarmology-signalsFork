@@ -1,7 +1,7 @@
 id,ticker,signal_type,session,entry_low,entry_high,tp_price,sl_price,tp_pct,sl_pct,score,wyckoff_phase,cmf_value,obv_direction,broker_crossing,vcp_grade,rs_interp,rationale,timestamp_wib,status,exit_price,exit_timestamp,pnl_pct,days_held,notes
 BMP-MYOR-20260630-PRE,MYOR,BUY,PRE_MARKET,1835.0,1853.0,2138.0,1714.0,16.5,6.6,53,B — Indeterminate,0.299,Rising ▲,—,NONE,OUTPERFORM ▲,CMF +0.299 (inflow kuat) · OBV naik ▲ · RS OUTPERFORM ▲,2026-06-30 16:22:43,LOSS,1714.0,2026-07-09 06:01:53,-6.59,7,SL hit
-BMP-INTP-20260707-MID,INTP,BUY,MIDDAY,4480.0,4525.0,5042.0,4255.0,12.5,5.0,50,B — Indeterminate,0.0798,Rising ▲,—,NONE,IN LINE →,OBV naik ▲,2026-07-07 08:53:14,OPEN,,,,,
-BMP-INTP-20260707-POST,INTP,BUY,POST_MARKET,4500.0,4545.0,5065.0,4274.0,12.6,5.0,51,B — Indeterminate,0.0949,Rising ▲,—,NONE,IN LINE →,CMF +0.095 (inflow) · OBV naik ▲,2026-07-07 12:07:50,OPEN,,,,,
+BMP-INTP-20260707-MID,INTP,BUY,MIDDAY,4480.0,4525.0,5042.0,4255.0,12.5,5.0,50,B — Indeterminate,0.0798,Rising ▲,—,NONE,IN LINE →,OBV naik ▲,2026-07-07 08:53:14,EXPIRED,5000.0,2026-08-04 04:55:07,11.61,20,Expired 20 hari
+BMP-INTP-20260707-POST,INTP,BUY,POST_MARKET,4500.0,4545.0,5065.0,4274.0,12.6,5.0,51,B — Indeterminate,0.0949,Rising ▲,—,NONE,IN LINE →,CMF +0.095 (inflow) · OBV naik ▲,2026-07-07 12:07:50,EXPIRED,5000.0,2026-08-04 04:55:07,11.11,20,Expired 20 hari
 BMP-MBAP-20260710-MID,MBAP,BUY,MIDDAY,1350.0,1364.0,1548.0,1271.0,14.7,5.9,65,C — Spring ⭐,0.1774,Falling ▼,—,NONE,IN LINE →,CMF +0.177 (inflow kuat) · Wyckoff C — Spring ⭐ · Vol 3.1x,2026-07-10 08:51:04,OPEN,,,,,
 BMP-MBAP-20260710-POST,MBAP,BUY,POST_MARKET,1350.0,1364.0,1548.0,1271.0,14.7,5.9,65,C — Spring ⭐,0.1774,Falling ▼,—,NONE,IN LINE →,CMF +0.177 (inflow kuat) · Wyckoff C — Spring ⭐ · Vol 3.1x,2026-07-10 12:07:51,OPEN,,,,,
 BMP-WTON-20260714-SIG,WTON,BUY,POST_OPEN,73.0,74.0,83.0,69.0,13.7,5.5,64,C — Spring ⭐,0.3731,Falling ▼,—,NONE,IN LINE →,CMF +0.373 (inflow kuat) · Wyckoff C — Spring ⭐,2026-07-14 03:45:51,OPEN,,,,,
